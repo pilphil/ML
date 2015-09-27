@@ -1,0 +1,90 @@
+---
+title: "ML"
+author: "Satya"
+date: "26 September, 2015"
+output: html_document
+---
+
+The data from 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. This data comprises of accelerometer readings from the belt, forearm, belt and dumbbell of each of the participants. This data is used to predict the manner in which the exercise was done.
+
+ Load required libraries
+```{r}
+library(caret)
+```
+
+ Get the data
+Set the working directory, doenload the training and test data from the specified directory. Remove columns that have NAs and also
+the columns that are irrelevant to the accelerometer data, like the timestamps and the derived columns.
+
+```{r}
+setwd('/Users/satyas/Documents/Coursera/ML/Project/WriteUp')
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', destfile = "./training.csv", method="curl")
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', destfile = "./testing.csv", method="curl")
+
+training_master <- read.csv("./training.csv", na.strings = c("NA", "#DIV/0!", ""))
+training_master <- training_master[,colSums(is.na(training_master)) == 0]
+
+testing_master <- read.csv("./testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing_master <- testing_master[,colSums(is.na(testing_master))==0]
+
+
+removeColsTrain <- grepl("^X|user|time|window", colnames(training_master))
+training_master1 <- training_master[,!removeColsTrain]
+
+removeColsTest <- grepl("^X|user|time|window", colnames(testing_master))
+testing_master1 <- testing_master[,!removeColsTest]
+
+#Verify column names are the same in the training and testing sets, excepting the last column
+all.equal(colnames(training_master[1:length(colnames(training_master))-1]),colnames(testing_master[1:length(colnames(testing_master))-1]))
+
+
+```
+ Split the training dataset into 75% for training and 25% testing subgroup for cross validation. First set a seed for reproducibility
+ 
+```{r}
+set.seed(123)
+inTrain <- createDataPartition(training_master1$classe, p=0.75, list=FALSE)
+training_sub <- training_master1[inTrain,]
+testing_sub <- training_master1[-inTrain,]
+```
+
+ Based on the course lectures, random forests are a top performing algorithm with high accuracy. So I'm picking random forest to build a model, with 5-fold cross validation. The column classe in the training set is the outcome (or the method of doing the exercise) the rest of the columns from the pared down data are used as predictors.
+ 
+```{r}
+controlOut <- trainControl(method="cv", 5)
+modelFit <- train(classe ~ ., method = 'rf', data=training_sub, trControl=controlOut)
+modelFit
+```
+
+ See how this model fares with the testing_sub data. Examine the confusion matrix from the cross validation data to understand the accuracy of the model.
+
+```{r}
+predictOut <- predict(modelFit, testing_sub)
+confusionMatrix(testing_sub$classe, predictOut)
+```
+
+ Determine the out of sample error from the above 
+```{r}
+outOfSampErr <- 1 - as.numeric(confusionMatrix(testing_sub$classe, predictOut)$overall[1])
+outOfSampErr
+```
+
+Finally predict the classe for the real 20 row testing data set with this model. The last column in the testing set is problem_id, which can be ignored for the prediction.
+
+```{r}
+answer <- predict(modelFit, testing_master1[, -length(names(testing_master1))])
+answer
+```
+
+Generate the text files required for the submission; using code provided on the submission page.
+
+```{r}
+pml_write_files = function(x){
+      n = length(x)
+       for(i in 1:n){
+            filename = paste0("problem_id_",i,".txt")
+            write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+       }
+ }
+pml_write_files(answer)
+```
